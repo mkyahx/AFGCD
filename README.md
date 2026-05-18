@@ -9,6 +9,8 @@
 
 ---
 
+Checkpoints: [Link](https://pan.baidu.com/s/1sr5zdaq5KCwqYC-bj6yejA?pwd=35q8)
+
 
 ## 🚀 Installation
 
