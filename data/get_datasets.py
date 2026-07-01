@@ -44,7 +44,8 @@ def get_datasets(dataset_name, train_transform, test_transform, args):
     datasets = get_dataset_f(train_transform=train_transform, test_transform=test_transform,
                             train_classes=args.train_classes,
                             prop_train_labels=args.prop_train_labels,
-                            split_train_val=False)
+                            split_train_val=False,
+                            seed=getattr(args, 'seed', 0))
     # Set target transforms:
     target_transform_dict = {}
     for i, cls in enumerate(list(args.train_classes) + list(args.unlabeled_classes)):

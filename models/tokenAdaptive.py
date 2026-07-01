@@ -43,7 +43,7 @@ class DINOHead(nn.Module):
         return x_proj, logits, aux_preds
 
 class TokenAdaptivePruner(nn.Module):
-    def __init__(self, args, backbone):
+    def __init__(self, args, backbone, mask_alpha=1.0):
         super().__init__()
         
         self.num_labeled_classes = args.num_labeled_classes
@@ -55,6 +55,7 @@ class TokenAdaptivePruner(nn.Module):
         else:
             self.mask_length = int(args.image_size[0] / 16)
         self.batch_size = args.batch_size
+        self.mask_alpha = mask_alpha
         
         self.norm = nn.LayerNorm(args.feat_dim, eps=1e-6)
 
@@ -71,11 +72,12 @@ class TokenAdaptivePruner(nn.Module):
 
     def init_TIME(self):
         self.TIME = nn.ModuleList([   
-                    Token_Importance_Measurer(num_classes=self.num_labeled_classes, feat_dim=self.feat_dim) for _ in range(len(self.pretrainModel.blocks) - 1)
+                    Token_Importance_Measurer(num_classes=self.num_labeled_classes, feat_dim=self.feat_dim, mask_alpha=self.mask_alpha) for _ in range(len(self.pretrainModel.blocks) - 1)
                 ])
 
     def forward(self, data):
-        imgs, training = data
+        imgs, training = data[0], data[1]
+        patch_mask = data[2] if len(data) > 2 else None
         preds = []
         attn_scores = []
         
@@ -84,7 +86,7 @@ class TokenAdaptivePruner(nn.Module):
             if i < len(self.pretrainModel.blocks) - 1:
                 x = self.block_forward(blk, x)
                 # All Layer TIME
-                attn_score, pred = self.TIME[i](x.detach())
+                attn_score, pred = self.TIME[i](x.detach(), patch_mask=patch_mask)
                 preds.append(pred)
                 attn_scores.append(attn_score)
             else:

@@ -1,5 +1,6 @@
 import argparse
-
+import os
+import random
 import math
 import numpy as np
 import torch
@@ -13,9 +14,22 @@ from data.get_datasets import get_datasets, get_class_splits
 
 from util.general_utils import AverageMeter, init_experiment
 from util.cluster_and_log_utils import log_accs_from_preds
-from config import exp_root
+from config import exp_root, seed as default_seed
 from models.model import info_nce_logits, SupConLoss, DistillLoss, ContrastiveLearningViewGenerator, get_params_groups
 from models.tokenAdaptive import *
+
+
+def set_seed(seed: int):
+    if seed is None:
+        return
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
 
 def train(student, train_loader, test_loader, unlabelled_train_loader, args):
     params_groups = get_params_groups(student)
@@ -217,11 +231,15 @@ if __name__ == "__main__":
     parser.add_argument('--print_freq', default=10, type=int)
     parser.add_argument('--exp_name', default=None, type=str)
     parser.add_argument('--threshold', default=0.2, type=float)
+    parser.add_argument('--seed', default=default_seed, type=int, help='Global random seed for reproducibility')
+    parser.add_argument('--mask_root', type=str, default=None, help='Path to patch masks')
+    parser.add_argument('--mask_alpha', type=float, default=1.0, help='Mask alpha for background patches')
 
     # ----------------------
     # INIT
     # ----------------------
     args = parser.parse_args()
+    set_seed(args.seed)
     device = torch.device('cuda:0')
     args = get_class_splits(args)
 
@@ -291,7 +309,9 @@ if __name__ == "__main__":
     unlabelled_len = len(train_dataset.unlabelled_dataset)
     sample_weights = [1 if i < label_len else label_len / unlabelled_len for i in range(len(train_dataset))]
     sample_weights = torch.DoubleTensor(sample_weights)
-    sampler = torch.utils.data.WeightedRandomSampler(sample_weights, num_samples=len(train_dataset))
+    generator = torch.Generator()
+    generator.manual_seed(args.seed)
+    sampler = torch.utils.data.WeightedRandomSampler(sample_weights, num_samples=len(train_dataset), generator=generator)
 
     # --------------------
     # DATALOADERS
@@ -306,7 +326,7 @@ if __name__ == "__main__":
     # ----------------------
     # PROJECTION HEAD
     # ----------------------
-    backbone_modify = TokenAdaptivePruner(args, backbone)
+    backbone_modify = TokenAdaptivePruner(args, backbone, mask_alpha=args.mask_alpha)
     projector = DINOHead(in_dim=args.feat_dim, out_dim=args.mlp_out_dim, nlayers=args.num_mlp_layers)
     model = nn.Sequential(backbone_modify, projector).to(device)
 
