@@ -1,2 +1,5 @@
 masks/
 dev_outputs/
+__pycache__/
+*.pyc
+**/__pycache__/
