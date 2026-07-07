@@ -110,7 +110,10 @@ class CustomCub2011Mask(Dataset):
         patch_mask = torch.tensor(self._get_mask(sample.filepath).copy(), dtype=torch.float32)
 
         if self.transform is not None:
-            img = self.transform(img)
+            if getattr(self.transform, 'supports_mask_pair', False):
+                img, patch_mask = self.transform(img, patch_mask)
+            else:
+                img = self.transform(img)
 
         if self.target_transform is not None:
             target = self.target_transform(target)
