@@ -19,8 +19,6 @@ class TokenAdaptivePrunerAlpha(nn.Module):
         else:
             self.mask_length = int(args.image_size[0] / 16)
         self.batch_size = args.batch_size
-        self.time_num_heads = backbone.blocks[0].attn.num_heads
-
         self.norm = nn.LayerNorm(args.feat_dim, eps=1e-6)
 
         self.init_TIME()
@@ -39,7 +37,6 @@ class TokenAdaptivePrunerAlpha(nn.Module):
             Token_Importance_Measurer_Alpha(
                 num_classes=self.num_labeled_classes,
                 feat_dim=self.feat_dim,
-                num_heads=self.time_num_heads,
                 alpha=self.alpha,
             )
             for _ in range(len(self.pretrainModel.blocks) - 1)

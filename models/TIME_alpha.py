@@ -9,24 +9,20 @@ from timm.models.layers import trunc_normal_
 
 
 class Simple_Cross_Attention_Alpha(nn.Module):
-    def __init__(self, feat_dim=768, mlp_ratio=4.0, num_heads=12, alpha=1.0):
+    def __init__(self, feat_dim=768, mlp_ratio=4.0, alpha=1.0):
         super().__init__()
 
-        if feat_dim % num_heads != 0:
-            raise ValueError(f"feat_dim ({feat_dim}) must be divisible by num_heads ({num_heads}).")
         if alpha < 0:
             raise ValueError(f"alpha ({alpha}) must be non-negative.")
 
-        self.num_heads = num_heads
-        self.head_dim = feat_dim // num_heads
-        self.scale = self.head_dim ** -0.5
+        self.D_sqrt = feat_dim**-0.5
         self.alpha = float(alpha)
 
-        self.learnable_query = nn.Parameter(torch.empty(1, 1, feat_dim))
+        self.learnable_query = nn.Parameter(torch.empty(1, feat_dim))
         self.mlp_norm = nn.LayerNorm(feat_dim, eps=1e-6)
         self.mlp = Mlp(feat_dim, int(feat_dim * mlp_ratio))
 
-        trunc_normal_tf_(self.learnable_query, std=self.scale)
+        trunc_normal_tf_(self.learnable_query, std=self.D_sqrt)
 
     def _align_patch_mask(self, patch_mask, batch_size, token_count, device):
         if patch_mask is None:
@@ -62,18 +58,16 @@ class Simple_Cross_Attention_Alpha(nn.Module):
         return (patch_mask.squeeze(1).reshape(batch_size, token_count) > 0.5).float()
 
     def forward(self, x, patch_mask=None):
-        bsz, num_tokens, feat_dim = x.shape
+        B, num_tokens, _ = x.shape
 
-        q = self.learnable_query.expand(bsz, -1, -1)
-        q = q.reshape(bsz, 1, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        k = x.reshape(bsz, num_tokens, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-        v = x.reshape(bsz, num_tokens, self.num_heads, self.head_dim).permute(0, 2, 1, 3)
-
-        attn_logits = (q @ k.transpose(-2, -1)) * self.scale
+        q = self.learnable_query.repeat(B, 1).unsqueeze(1)
+        k, v = x, x
+        raw_attn = q @ k.transpose(-2, -1)
+        attn_logits = raw_attn * self.D_sqrt
 
         if patch_mask is not None and self.alpha != 1.0:
-            aligned_patch_mask = self._align_patch_mask(patch_mask, bsz, num_tokens - 1, x.device)
-            cls_mask = torch.ones(bsz, 1, device=x.device, dtype=aligned_patch_mask.dtype)
+            aligned_patch_mask = self._align_patch_mask(patch_mask, B, num_tokens - 1, x.device)
+            cls_mask = torch.ones(B, 1, device=x.device, dtype=aligned_patch_mask.dtype)
             full_mask = torch.cat([cls_mask, aligned_patch_mask], dim=1)
 
             alpha_mask = torch.where(
@@ -81,13 +75,15 @@ class Simple_Cross_Attention_Alpha(nn.Module):
                 torch.ones_like(full_mask),
                 torch.full_like(full_mask, self.alpha),
             ).clamp_min(1e-12)
-            attn_logits = attn_logits + alpha_mask.log().unsqueeze(1).unsqueeze(2)
+            log_alpha_mask = alpha_mask.log().unsqueeze(1)
+            attn_logits = attn_logits + log_alpha_mask
+            raw_attn = raw_attn + log_alpha_mask
 
         attn_sm = attn_logits.softmax(dim=-1)
-        x = (attn_sm @ v).transpose(1, 2).reshape(bsz, feat_dim)
+        x = (attn_sm @ v).squeeze(1)
 
         x = x + self.mlp(self.mlp_norm(x))
-        return x, attn_logits.mean(dim=1).squeeze(1)
+        return x, raw_attn.squeeze(1)
 
 
 class Aux_Head(nn.Module):
@@ -105,11 +101,10 @@ class Aux_Head(nn.Module):
 
 
 class Token_Importance_Measurer_Alpha(nn.Module):
-    def __init__(self, num_classes=1000, feat_dim=768, num_heads=12, alpha=1.0):
+    def __init__(self, num_classes=1000, feat_dim=768, alpha=1.0):
         super().__init__()
         self.sim_cross_attn = Simple_Cross_Attention_Alpha(
             feat_dim=feat_dim,
-            num_heads=num_heads,
             alpha=alpha,
         )
         self.aux_head = Aux_Head(feat_dim, num_classes)

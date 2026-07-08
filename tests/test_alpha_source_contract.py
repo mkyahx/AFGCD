@@ -17,7 +17,19 @@ class AlphaSourceContractTests(unittest.TestCase):
 
         self.assertIn("get_paired_mask_transform", source)
         self.assertIn("PairedMaskViewGenerator", source)
+        self.assertIn("TokenAdaptivePrunerAlpha(args, backbone)", source)
+        self.assertNotIn("use_alpha_guidance = args.alpha != 1.0", source)
+        self.assertNotIn("TokenAdaptivePruner(args, backbone)", source)
         self.assertNotIn("from data.augmentations import get_transform", source)
+
+    def test_alpha_time_keeps_original_single_query_shape(self):
+        source = (REPO_ROOT / "models" / "TIME_alpha.py").read_text(encoding="utf-8")
+
+        self.assertIn("self.D_sqrt = feat_dim**-0.5", source)
+        self.assertIn("nn.Parameter(torch.empty(1, feat_dim))", source)
+        self.assertIn("q = self.learnable_query.repeat(B, 1).unsqueeze(1)", source)
+        self.assertNotIn("num_heads", source)
+        self.assertNotIn("head_dim", source)
 
 
 if __name__ == "__main__":
