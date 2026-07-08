@@ -13,14 +13,14 @@ from torch.optim import SGD, lr_scheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data.augmentations import get_transform
 from data.cub_mask import MergedDatasetMask, get_cub_mask_datasets
 from data.get_datasets import get_class_splits
+from data.paired_mask_transforms import PairedMaskViewGenerator, get_paired_mask_transform
 
 from util.general_utils import AverageMeter, init_experiment
 from util.cluster_and_log_utils import log_accs_from_preds
 from config import exp_root
-from models.model import info_nce_logits, SupConLoss, DistillLoss, ContrastiveLearningViewGenerator, get_params_groups
+from models.model import info_nce_logits, SupConLoss, DistillLoss, get_params_groups
 from models.tokenAdaptive import DINOHead
 from models.tokenAdaptive_alpha import TokenAdaptivePrunerAlpha
 
@@ -55,10 +55,7 @@ def collate_train_mask_batch(batch, target_grid_size):
     class_labels = torch.as_tensor(class_labels)
     uq_idxs = torch.as_tensor(uq_idxs)
     mask_lab = torch.stack([torch.as_tensor(sample).clone().contiguous() for sample in mask_lab], dim=0)
-    patch_masks = torch.stack(
-        [_resize_patch_mask(sample, target_grid_size) for sample in patch_masks],
-        dim=0,
-    )
+    patch_masks = _stack_patch_mask_field(patch_masks, target_grid_size)
     return images, class_labels, uq_idxs, mask_lab, patch_masks
 
 
@@ -72,6 +69,22 @@ def collate_eval_mask_batch(batch, target_grid_size):
         dim=0,
     )
     return images, class_labels, uq_idxs, patch_masks
+
+
+def _stack_patch_mask_field(mask_batch, target_grid_size):
+    if isinstance(mask_batch[0], (list, tuple)):
+        num_views = len(mask_batch[0])
+        return [
+            torch.stack(
+                [_resize_patch_mask(sample[view_idx], target_grid_size) for sample in mask_batch],
+                dim=0,
+            )
+            for view_idx in range(num_views)
+        ]
+    return torch.stack(
+        [_resize_patch_mask(sample, target_grid_size) for sample in mask_batch],
+        dim=0,
+    )
 
 
 def build_mask_datasets(train_transform, test_transform, args):
@@ -128,8 +141,11 @@ def train(student, train_loader, test_loader, unlabelled_train_loader, args):
 
             class_labels, mask_lab = class_labels.cuda(non_blocking=True), mask_lab.cuda(non_blocking=True).bool()
             images = torch.cat(images, dim=0).cuda(non_blocking=True)
-            patch_mask = patch_mask.cuda(non_blocking=True).float()
-            patch_mask = torch.cat([patch_mask, patch_mask], dim=0)
+            if isinstance(patch_mask, (list, tuple)):
+                patch_mask = torch.cat(patch_mask, dim=0).cuda(non_blocking=True).float()
+            else:
+                patch_mask = patch_mask.cuda(non_blocking=True).float()
+                patch_mask = torch.cat([patch_mask, patch_mask], dim=0)
 
             mask = torch.cat([mask_lab, mask_lab], dim=0).cuda(non_blocking=True)
             labels = torch.cat([class_labels, class_labels], dim=0)
@@ -331,8 +347,8 @@ if __name__ == "__main__":
     else:
         args.patch_grid_size = int(args.image_size[0] / 16)
 
-    train_transform, test_transform = get_transform(args.transform, image_size=args.image_size, args=args)
-    train_transform = ContrastiveLearningViewGenerator(base_transform=train_transform, n_views=args.n_views)
+    train_transform, test_transform = get_paired_mask_transform(args.transform, image_size=args.image_size, args=args)
+    train_transform = PairedMaskViewGenerator(base_transform=train_transform, n_views=args.n_views)
 
     train_dataset, test_dataset, unlabelled_train_examples_test, datasets = build_mask_datasets(
         train_transform,

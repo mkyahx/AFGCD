@@ -14,6 +14,8 @@ class Simple_Cross_Attention_Alpha(nn.Module):
 
         if feat_dim % num_heads != 0:
             raise ValueError(f"feat_dim ({feat_dim}) must be divisible by num_heads ({num_heads}).")
+        if alpha < 0:
+            raise ValueError(f"alpha ({alpha}) must be non-negative.")
 
         self.num_heads = num_heads
         self.head_dim = feat_dim // num_heads
@@ -74,12 +76,12 @@ class Simple_Cross_Attention_Alpha(nn.Module):
             cls_mask = torch.ones(bsz, 1, device=x.device, dtype=aligned_patch_mask.dtype)
             full_mask = torch.cat([cls_mask, aligned_patch_mask], dim=1)
 
-            scale = torch.where(
+            alpha_mask = torch.where(
                 full_mask > 0.5,
                 torch.ones_like(full_mask),
                 torch.full_like(full_mask, self.alpha),
-            )
-            attn_logits = attn_logits * scale.unsqueeze(1).unsqueeze(2)
+            ).clamp_min(1e-12)
+            attn_logits = attn_logits + alpha_mask.log().unsqueeze(1).unsqueeze(2)
 
         attn_sm = attn_logits.softmax(dim=-1)
         x = (attn_sm @ v).transpose(1, 2).reshape(bsz, feat_dim)
