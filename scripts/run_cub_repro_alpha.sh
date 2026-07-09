@@ -6,7 +6,7 @@ set -x
 MASK_ROOT=${MASK_ROOT:-/userhome/cs/mkyahx/AFGCD/masks}
 ALPHA=${ALPHA:-0.7}
 
-for seed in 1; do
+for seed in 0; do
     CUDA_VISIBLE_DEVICES=0 python train_repro_alpha.py \
         --dataset_name 'cub' \
         --batch_size 128 \

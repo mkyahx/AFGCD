@@ -4,9 +4,9 @@ set -e
 set -x
 
 MASK_ROOT=${MASK_ROOT:-/userhome/cs/mkyahx/AFGCD/masks}
-DTHETA=${DTHETA:-0.5}
+DTHETA=${DTHETA:-1}
 
-for seed in 0 1; do
+for seed in 0 ; do
     CUDA_VISIBLE_DEVICES=0 python train_repro_dtheta.py \
         --dataset_name 'cub' \
         --batch_size 128 \
