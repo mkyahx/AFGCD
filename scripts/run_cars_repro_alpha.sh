@@ -8,7 +8,7 @@ ALPHA=${ALPHA:-1}
 
 for seed in 0 1; do
     CUDA_VISIBLE_DEVICES=0 python train_repro_alpha.py \
-        --dataset_name 'cub' \
+        --dataset_name 'scars' \
         --batch_size 128 \
         --grad_from_block 11 \
         --epochs 200 \
@@ -27,5 +27,5 @@ for seed in 0 1; do
         --mask_root "$MASK_ROOT" \
         --alpha "$ALPHA" \
         --seed $seed \
-        --exp_name cub_simgcd_alpha_${ALPHA}_seed_${seed}
+        --exp_name scars_simgcd_alpha_${ALPHA}_seed_${seed}
 done
