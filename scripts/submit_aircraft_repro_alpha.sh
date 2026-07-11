@@ -3,9 +3,9 @@
 #SBATCH --partition=batch
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
-#SBATCH --mem=24G
+#SBATCH --mem=64G
 #SBATCH --time=6:00:00
 #SBATCH --mail-type=BEGIN,END,FAIL
 #SBATCH --mail-user=mkyahx@connect.hku.hk
@@ -20,10 +20,10 @@ source /userhome/cs/mkyahx/miniconda3/etc/profile.d/conda.sh
 conda activate simgcd
 cd /userhome/cs/mkyahx/AFGCD/
 
-MASK_ROOT=${MASK_ROOT:-/userhome/cs/mkyahx/masks}
+MASK_ROOT=${MASK_ROOT:-/userhome/cs/mkyahx/mask/air/masks-2}
 ALPHA=${ALPHA:-1}
 
-for seed in 0 1; do
+for seed in 0 1 2; do
     CUDA_VISIBLE_DEVICES=0 python train_repro_alpha.py \
         --dataset_name 'aircraft' \
         --batch_size 128 \
