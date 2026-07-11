@@ -22,8 +22,8 @@ for seed in 0 1; do
         --warmup_teacher_temp 0.07 \
         --teacher_temp 0.04 \
         --warmup_teacher_temp_epochs 30 \
-        --memax_weight 2 \
-        --threshold 0.2 \
+        --memax_weight 1 \
+        --threshold 0.01 \
         --mask_root "$MASK_ROOT" \
         --alpha "$ALPHA" \
         --seed $seed \

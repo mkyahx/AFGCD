@@ -19,8 +19,8 @@ for seed in 0 1 2; do
         --warmup_teacher_temp 0.07 \
         --teacher_temp 0.04 \
         --warmup_teacher_temp_epochs 30 \
-        --memax_weight 2 \
-        --threshold 0.2 \
+        --memax_weight 1 \
+        --threshold 0.01 \
         --seed $seed \
         --exp_name aircraft_simgcd_seed_${seed}
 done
