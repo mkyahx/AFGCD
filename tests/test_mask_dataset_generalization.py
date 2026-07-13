@@ -65,6 +65,14 @@ class MaskDatasetGeneralizationTests(unittest.TestCase):
         self.assertIn("'aircraft'", source)
         self.assertIn("'scars'", source)
 
+    def test_dtheta_entrypoint_no_longer_hardcodes_cub_only(self):
+        with open(os.path.join(REPO_ROOT, "train_repro_dtheta.py"), encoding="utf-8") as source_file:
+            source = source_file.read()
+
+        self.assertNotIn("currently supports only the CUB dataset", source)
+        self.assertIn("'aircraft'", source)
+        self.assertIn("'scars'", source)
+
 
 if __name__ == "__main__":
     unittest.main()

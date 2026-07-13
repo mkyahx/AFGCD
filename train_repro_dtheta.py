@@ -12,8 +12,8 @@ from torch.optim import SGD, lr_scheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data.cub_mask import MergedDatasetMask, get_cub_mask_datasets
-from data.get_datasets import get_class_splits
+from data.get_datasets import get_class_splits, get_dataset_funcs
+from data.mask_dataset import DatasetWithPatchMask, MergedDatasetMask
 from data.paired_mask_transforms import PairedMaskViewGenerator, get_paired_mask_transform
 
 from util.general_utils import AverageMeter, init_experiment
@@ -86,25 +86,53 @@ def _stack_patch_mask_field(mask_batch, target_grid_size):
 
 
 def build_mask_datasets(train_transform, test_transform, args):
-    if args.dataset_name != 'cub':
-        raise NotImplementedError('The parallel soft-mask entrypoint currently supports only the CUB dataset.')
+    supported_mask_datasets = {'cub', 'aircraft', 'scars'}
+    if args.dataset_name not in supported_mask_datasets:
+        raise NotImplementedError(
+            f"The parallel soft-mask entrypoint supports {sorted(supported_mask_datasets)}, "
+            f"got {args.dataset_name!r}."
+        )
 
-    datasets = get_cub_mask_datasets(
-        train_transform=train_transform,
-        test_transform=test_transform,
+    get_dataset_f = get_dataset_funcs[args.dataset_name]
+    datasets = get_dataset_f(
+        train_transform=None,
+        test_transform=None,
         train_classes=args.train_classes,
         prop_train_labels=args.prop_train_labels,
         split_train_val=False,
-        mask_root=args.mask_root,
     )
 
+    target_transform_dict = {}
+    for i, cls in enumerate(list(args.train_classes) + list(args.unlabeled_classes)):
+        target_transform_dict[cls] = i
+    target_transform = lambda x: target_transform_dict[x]
+
+    for dataset in datasets.values():
+        if dataset is not None:
+            dataset.target_transform = target_transform
+
     train_dataset = MergedDatasetMask(
-        labelled_dataset=deepcopy(datasets['train_labelled']),
-        unlabelled_dataset=deepcopy(datasets['train_unlabelled']),
+        labelled_dataset=DatasetWithPatchMask(
+            deepcopy(datasets['train_labelled']),
+            mask_root=args.mask_root,
+            transform=train_transform,
+        ),
+        unlabelled_dataset=DatasetWithPatchMask(
+            deepcopy(datasets['train_unlabelled']),
+            mask_root=args.mask_root,
+            transform=train_transform,
+        ),
     )
-    test_dataset = datasets['test']
-    unlabelled_train_examples_test = deepcopy(datasets['train_unlabelled'])
-    unlabelled_train_examples_test.transform = test_transform
+    test_dataset = DatasetWithPatchMask(
+        datasets['test'],
+        mask_root=args.mask_root,
+        transform=test_transform,
+    )
+    unlabelled_train_examples_test = DatasetWithPatchMask(
+        deepcopy(datasets['train_unlabelled']),
+        mask_root=args.mask_root,
+        transform=test_transform,
+    )
     return train_dataset, test_dataset, unlabelled_train_examples_test, datasets
 
 def train(student, train_loader, test_loader, unlabelled_train_loader, args):
